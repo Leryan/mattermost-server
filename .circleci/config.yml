@@ -201,6 +201,7 @@ jobs:
           name: Run Docker compose
           command: |
             cd mattermost-server/build
+            docker-compose --no-ansi build
             docker-compose --no-ansi run --rm start_dependencies
             cat ../tests/test-data.ldif | docker-compose --no-ansi exec -T openldap bash -c 'ldapadd -x -D "cn=admin,dc=mm,dc=test,dc=com" -w mostest';
             docker-compose --no-ansi exec -T minio sh -c 'mkdir -p /data/mattermost-test';
@@ -273,6 +274,7 @@ jobs:
           name: Run Docker compose
           command: |
             cd mattermost-server/build
+            docker-compose --no-ansi build
             docker-compose --no-ansi run --rm start_dependencies
             cat ../tests/test-data.ldif | docker-compose --no-ansi exec -T openldap bash -c 'ldapadd -x -D "cn=admin,dc=mm,dc=test,dc=com" -w mostest';
             docker-compose --no-ansi exec -T minio sh -c 'mkdir -p /data/mattermost-test';

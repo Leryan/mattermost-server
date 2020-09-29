@@ -1,4 +1,4 @@
-version: '2.4'
+version: '2.4' # run as whole environment
 services:
   mysql:
     container_name: mattermost-mysql

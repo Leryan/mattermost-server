@@ -1,4 +1,4 @@
-version: '2.4'
+version: '2.4' # used to generate on the fly docker-compose for dev environment based on config.override.mk
 services:
   mysql:
     restart: 'no'
