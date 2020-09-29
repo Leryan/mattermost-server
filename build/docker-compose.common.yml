@@ -5,7 +5,6 @@ services:
       context: docker/mysql:5.6
     container_name: mysql
     env_file: docker/mysql:5.6/.env
-    tmpfs: /var/lib/mysql
     restart: always
     networks:
       - mm-test
@@ -14,7 +13,6 @@ services:
       context: docker/postgres:9.4
     container_name: postgres
     env_file: docker/postgres:9.4/.env
-    tmpfs: /var/lib/postgresql/data
     restart: always
     networks:
       - mm-test

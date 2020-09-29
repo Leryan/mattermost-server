@@ -1,13 +1,16 @@
+# Used for testing in CI
 version: '2.4'
 services:
   mysql:
     extends:
         file: docker-compose.common.yml
         service: mysql
+    tmpfs: /var/lib/mysql
   postgres:
     extends:
         file: docker-compose.common.yml
         service: postgres
+    tmpfs: /var/lib/postgresql/data
   minio:
     extends:
         file: docker-compose.common.yml
