@@ -1,5 +1,6 @@
 FROM postgres:9.4
 
-COPY postgres.conf /etc/postgresql/
+COPY --chown=postgres postgresql.conf /usr/share/postgresql/
 
-CMD ["postgres", "-c", "'config_file=/etc/postgresql/postgresql.conf'"]
+# Check with $ psql -U mmuser mattermost_test -c 'SHOW config_file'
+CMD ["postgres", "-c", "config_file=/usr/share/postgresql/postgresql.conf"]

@@ -1,17 +1,13 @@
-version: '2.4' # testing to be replaced with gitlab-ci.yml
+version: '2.4'
 services:
   mysql:
     extends:
         file: docker-compose.common.yml
         service: mysql
-    tmpfs: /var/lib/mysql # this is special for faster tests
-    volumes:
-     - "./docker/mysql.conf.d:/etc/mysql/conf.d"
   postgres:
     extends:
         file: docker-compose.common.yml
         service: postgres
-    tmpfs: /var/lib/postgresql/data
   minio:
     extends:
         file: docker-compose.common.yml
