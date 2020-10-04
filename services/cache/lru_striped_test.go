@@ -97,7 +97,8 @@ func TestLRUStriped_Get(t *testing.T) {
 var sum uint64
 
 func BenchmarkMaphashSum64(b *testing.B) {
-	seed := (&maphash.Hash{}).Seed()
+	seed := maphash.MakeSeed()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var h maphash.Hash
 		h.SetSeed(seed)
