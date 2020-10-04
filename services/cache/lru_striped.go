@@ -105,8 +105,7 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 
 	opts.Size = backupSize
 
-	h := &maphash.Hash{}
-	return &LRUStriped{buckets: buckets, opts: opts, seed: h.Seed()}
+	return &LRUStriped{buckets: buckets, opts: opts, seed: maphash.MakeSeed()}
 }
 
 func NewDefaultLRU(opts *LRUOptions) Cache {
