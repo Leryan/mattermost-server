@@ -12,6 +12,7 @@ import (
 type LRUStriped struct {
 	buckets []*LRU
 	opts    *LRUOptions
+	seed    maphash.Seed
 }
 
 func (L *LRUStriped) Purge() error {
@@ -30,7 +31,8 @@ func (L *LRUStriped) SetWithDefaultExpiry(key string, value interface{}) error {
 }
 
 func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
-	var h maphash.Hash
+	h := &maphash.Hash{}
+	h.SetSeed(L.seed)
 	if _, err := h.WriteString(key); err != nil {
 		panic(err)
 	}
@@ -102,7 +104,9 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 	}
 
 	opts.Size = backupSize
-	return &LRUStriped{buckets: buckets, opts: opts}
+
+	h := &maphash.Hash{}
+	return &LRUStriped{buckets: buckets, opts: opts, seed: h.Seed()}
 }
 
 func NewDefaultLRU(opts *LRUOptions) Cache {

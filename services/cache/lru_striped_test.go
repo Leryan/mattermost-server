@@ -10,11 +10,35 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
 )
+
+func makeLRUPredictibleTestData(num int) [][2]string {
+	kv := make([][2]string, num)
+	for i := 0; i < len(kv); i++ {
+		kv[i] = [2]string{
+			fmt.Sprintf("%d-key-%d", i, i),
+			fmt.Sprintf("%d-val-%d", i, i),
+		}
+	}
+	return kv
+}
+
+func makeLRURandomTestData(num int) [][2]string {
+	kv := make([][2]string, num)
+	for i := 0; i < len(kv); i++ {
+		kv[i] = [2]string{
+			uuid.New().String(),
+			fmt.Sprintf("%d-val-%d", i, i),
+		}
+	}
+	return kv
+}
 
 func TestNewLRUStriped(t *testing.T) {
 	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 3, Size: 20}).(*LRUStriped)
@@ -24,11 +48,59 @@ func TestNewLRUStriped(t *testing.T) {
 	assert.Equal(t, 8, cache.buckets[2].size)
 }
 
+func TestLRUStriped_DistributionPredictible(t *testing.T) {
+	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 4, Size: 10000}).(*LRUStriped)
+	kv := makeLRUPredictibleTestData(10000)
+	for _, v := range kv {
+		require.NoError(t, cache.Set(v[0], v[1]))
+	}
+
+	require.Len(t, cache.buckets, 4)
+	assert.GreaterOrEqual(t, cache.buckets[0].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[1].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[2].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[3].len, 2300)
+}
+
+func TestLRUStriped_DistributionRandom(t *testing.T) {
+	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 4, Size: 10000}).(*LRUStriped)
+	kv := makeLRURandomTestData(10000)
+	for _, v := range kv {
+		require.NoError(t, cache.Set(v[0], v[1]))
+	}
+
+	require.Len(t, cache.buckets, 4)
+	assert.GreaterOrEqual(t, cache.buckets[0].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[1].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[2].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[3].len, 2300)
+}
+
+func TestLRUStriped_HashKey(t *testing.T) {
+	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 2, Size: 128}).(*LRUStriped)
+	first := cache.hashkeyMapHash("key")
+	second := cache.hashkeyMapHash("key")
+	require.Equal(t, first, second)
+}
+
+func TestLRUStriped_Get(t *testing.T) {
+	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 4, Size: 128})
+	var out string
+	require.Equal(t, ErrKeyNotFound, cache.Get("key", &out))
+	require.Zero(t, out)
+
+	require.NoError(t, cache.Set("key", "value"))
+	require.NoError(t, cache.Get("key", &out))
+	require.Equal(t, "value", out)
+}
+
 var sum uint64
 
 func BenchmarkMaphashSum64(b *testing.B) {
+	seed := (&maphash.Hash{}).Seed()
 	for i := 0; i < b.N; i++ {
 		var h maphash.Hash
+		h.SetSeed(seed)
 		if _, err := h.WriteString(fmt.Sprint("superduperkey")); err != nil {
 			panic(err)
 		}
@@ -55,13 +127,7 @@ func BenchmarkLRUStriped_Concurrent(b *testing.B) {
 			atomic.StoreInt32(&run, 1)
 			defer atomic.StoreInt32(&run, 0)
 
-			kv := make([][2]string, b.N)
-			for i := 0; i < len(kv); i++ {
-				kv[i] = [2]string{
-					fmt.Sprintf("%d-key-%d", i, i),
-					fmt.Sprintf("%d-val-%d", i, i),
-				}
-			}
+			kv := makeLRUPredictibleTestData(b.N)
 
 			for _, cache := range []Cache{striped, lru} {
 				if err := cache.SetWithExpiry("testkey", "testvalue", time.Hour); err != nil {
