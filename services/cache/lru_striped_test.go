@@ -56,7 +56,7 @@ func BenchmarkLRUStriped_Concurrent(b *testing.B) {
 						i = 0
 					}
 					if err := cache.SetWithExpiry(kv[i][0], kv[i][1], time.Millisecond*100); err != nil {
-						b.Fatalf("set error: %v", err)
+						panic(fmt.Sprintf("set error: %v", err)) // pass ci checks, shouldn’t fail anyway.
 						return
 					}
 					i++
