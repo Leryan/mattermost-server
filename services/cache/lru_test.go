@@ -281,13 +281,18 @@ func TestLRUMarshalUnMarshal(t *testing.T) {
 	require.Equal(t, user, u)
 }
 
+func provideBenchmarkLRU(opts *LRUOptions) Cache {
+	return NewLRU(opts)
+	//return NewLRUStriped(opts)
+}
+
 func BenchmarkLRU(b *testing.B) {
 
 	value1 := "simplestring"
 
 	b.Run("simple=new", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			l2 := NewLRU(&LRUOptions{
+			l2 := provideBenchmarkLRU(&LRUOptions{
 				Size:                   1,
 				DefaultExpiry:          0,
 				InvalidateClusterEvent: "",
@@ -337,7 +342,7 @@ func BenchmarkLRU(b *testing.B) {
 
 	b.Run("complex=new", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			l2 := NewLRU(&LRUOptions{
+			l2 := provideBenchmarkLRU(&LRUOptions{
 				Size:                   1,
 				DefaultExpiry:          0,
 				InvalidateClusterEvent: "",
@@ -420,7 +425,7 @@ func BenchmarkLRU(b *testing.B) {
 
 	b.Run("User=new", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			l2 := NewLRU(&LRUOptions{
+			l2 := provideBenchmarkLRU(&LRUOptions{
 				Size:                   1,
 				DefaultExpiry:          0,
 				InvalidateClusterEvent: "",
@@ -500,7 +505,7 @@ func BenchmarkLRU(b *testing.B) {
 
 	b.Run("Post=new", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			l2 := NewLRU(&LRUOptions{
+			l2 := provideBenchmarkLRU(&LRUOptions{
 				Size:                   1,
 				DefaultExpiry:          0,
 				InvalidateClusterEvent: "",
@@ -524,7 +529,7 @@ func BenchmarkLRU(b *testing.B) {
 
 	b.Run("Status=new", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			l2 := NewLRU(&LRUOptions{
+			l2 := provideBenchmarkLRU(&LRUOptions{
 				Size:                   1,
 				DefaultExpiry:          0,
 				InvalidateClusterEvent: "",
@@ -560,7 +565,7 @@ func BenchmarkLRU(b *testing.B) {
 
 	b.Run("Session=new", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			l2 := NewLRU(&LRUOptions{
+			l2 := provideBenchmarkLRU(&LRUOptions{
 				Size:                   1,
 				DefaultExpiry:          0,
 				InvalidateClusterEvent: "",

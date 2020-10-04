@@ -28,6 +28,7 @@ type LRUOptions struct {
 	Size                   int
 	DefaultExpiry          time.Duration
 	InvalidateClusterEvent string
+	StripedBuckets         int
 }
 
 // entry is used to hold a value in the evictList.

@@ -33,7 +33,7 @@ func NewProvider() Provider {
 
 // NewCache creates a new cache with given opts
 func (c *cacheProvider) NewCache(opts *CacheOptions) Cache {
-	return NewLRU(&LRUOptions{
+	return NewDefaultLRU(&LRUOptions{
 		Name:                   opts.Name,
 		Size:                   opts.Size,
 		DefaultExpiry:          opts.DefaultExpiry,
