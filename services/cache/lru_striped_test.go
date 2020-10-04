@@ -1,0 +1,65 @@
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+
+package cache
+
+import (
+	"fmt"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func BenchmarkLRUStriped_Concurrent(b *testing.B) {
+	warmup := NewLRU(&LRUOptions{Size: 128, Name: "warmup"})
+	striped := NewLRUStriped(&LRUOptions{Size: 128, Name: "lru-striped"})
+	lru := NewLRU(&LRUOptions{Size: 128, Name: "lru"})
+
+	benchCases := []Cache{warmup, striped, lru}
+
+	for _, cache := range benchCases {
+		b.Run(cache.Name(), func(b *testing.B) {
+			run := int32(0)
+			atomic.StoreInt32(&run, 1)
+			defer atomic.StoreInt32(&run, 0)
+
+			kv := make([][2]string, b.N)
+			for i := 0; i < len(kv); i++ {
+				kv[i] = [2]string{
+					fmt.Sprintf("%d-key-%d", i, i),
+					fmt.Sprintf("%d-val-%d", i, i),
+				}
+			}
+
+			for _, cache := range []Cache{striped, lru} {
+				if err := cache.SetWithExpiry("testkey", "testvalue", time.Hour); err != nil {
+					b.Fatalf("preflight check failure: %v", err)
+				}
+			}
+
+			go func() {
+				i := 0
+				for atomic.LoadInt32(&run) > 0 {
+					if i >= len(kv) {
+						i = 0
+					}
+					if err := cache.SetWithExpiry(kv[i][0], kv[i][1], time.Millisecond*100); err != nil {
+						b.Fatalf("set error: %v", err)
+						return
+					}
+					i++
+				}
+			}()
+
+			time.Sleep(time.Second)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				var out string
+				if err := cache.Get(kv[i][0], &out); err != nil && err != ErrKeyNotFound {
+					b.Fatalf("get error: %v", err)
+				}
+			}
+		})
+		time.Sleep(time.Second)
+	}
+}
