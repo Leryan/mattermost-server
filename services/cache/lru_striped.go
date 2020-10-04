@@ -4,6 +4,7 @@
 package cache
 
 import (
+	"hash/maphash"
 	"runtime"
 	"time"
 
@@ -30,8 +31,20 @@ func (L *LRUStriped) SetWithDefaultExpiry(key string, value interface{}) error {
 	return L.SetWithExpiry(key, value, L.opts.DefaultExpiry)
 }
 
+func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
+	var h maphash.Hash
+	if _, err := h.WriteString(key); err != nil {
+		panic(err)
+	}
+	return h.Sum64()
+}
+
+func (L *LRUStriped) hashkeyXXHash(key string) uint64 {
+	return xxhash.Sum64String(key) // seems to be equivalent with maphash
+}
+
 func (L *LRUStriped) keyBucket(key string) *LRU {
-	return L.buckets[xxhash.Sum64([]byte(key))%uint64(len(L.buckets))]
+	return L.buckets[L.hashkeyMapHash(key)%uint64(len(L.buckets))]
 }
 
 func (L *LRUStriped) SetWithExpiry(key string, value interface{}, ttl time.Duration) error {

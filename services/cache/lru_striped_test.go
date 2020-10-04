@@ -5,10 +5,12 @@ package cache
 
 import (
 	"fmt"
+	"hash/maphash"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
@@ -20,6 +22,24 @@ func TestNewLRUStriped(t *testing.T) {
 	assert.Equal(t, 6, cache.buckets[0].size)
 	assert.Equal(t, 6, cache.buckets[1].size)
 	assert.Equal(t, 8, cache.buckets[2].size)
+}
+
+var sum uint64
+
+func BenchmarkMaphashSum64(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var h maphash.Hash
+		if _, err := h.WriteString(fmt.Sprint("superduperkey")); err != nil {
+			panic(err)
+		}
+		sum = h.Sum64()
+	}
+}
+
+func BenchmarkXXHashSum64(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		sum = xxhash.Sum64String("superduperkey")
+	}
 }
 
 func BenchmarkLRUStriped_Concurrent(b *testing.B) {
@@ -57,7 +77,6 @@ func BenchmarkLRUStriped_Concurrent(b *testing.B) {
 					}
 					if err := cache.SetWithExpiry(kv[i][0], kv[i][1], time.Millisecond*100); err != nil {
 						panic(fmt.Sprintf("set error: %v", err)) // pass ci checks, shouldn’t fail anyway.
-						return
 					}
 					i++
 				}
