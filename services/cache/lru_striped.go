@@ -80,7 +80,7 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 		opts.StripedBuckets = runtime.NumCPU()
 	}
 	if opts.Size < opts.StripedBuckets {
-		opts.Size = opts.StripedBuckets
+		opts.StripedBuckets = opts.Size
 	}
 
 	buckets := make([]*LRU, 0, opts.StripedBuckets)
@@ -88,12 +88,13 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 	baseSize := opts.Size / opts.StripedBuckets
 	lastSize := baseSize + (opts.Size % opts.StripedBuckets)
 	opts.Size = baseSize
-	for i := 0; i < opts.StripedBuckets-1; i++ {
+	for i := 0; i < opts.StripedBuckets; i++ {
+		if i == opts.StripedBuckets {
+			opts.Size = lastSize
+		}
 		buckets = append(buckets, NewLRU(opts).(*LRU))
 	}
 
-	opts.Size = lastSize
-	buckets = append(buckets, NewLRU(opts).(*LRU))
 	opts.Size = backupSize
 	return &LRUStriped{buckets: buckets, opts: opts}
 }
