@@ -7,8 +7,6 @@ import (
 	"hash/maphash"
 	"runtime"
 	"time"
-
-	"github.com/cespare/xxhash/v2"
 )
 
 type LRUStriped struct {
@@ -37,10 +35,6 @@ func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
 		panic(err)
 	}
 	return h.Sum64()
-}
-
-func (L *LRUStriped) hashkeyXXHash(key string) uint64 {
-	return xxhash.Sum64String(key) // seems to be equivalent with maphash
 }
 
 func (L *LRUStriped) keyBucket(key string) *LRU {
