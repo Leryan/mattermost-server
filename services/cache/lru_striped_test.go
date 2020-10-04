@@ -19,8 +19,8 @@ import (
 func TestNewLRUStriped(t *testing.T) {
 	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 3, Size: 20}).(*LRUStriped)
 	require.Len(t, cache.buckets, 3)
-	assert.Equal(t, 6, cache.buckets[0].size)
-	assert.Equal(t, 6, cache.buckets[1].size)
+	assert.Equal(t, 8, cache.buckets[0].size)
+	assert.Equal(t, 8, cache.buckets[1].size)
 	assert.Equal(t, 8, cache.buckets[2].size)
 }
 

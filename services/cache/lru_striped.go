@@ -95,13 +95,9 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 
 	buckets := make([]*LRU, 0, opts.StripedBuckets)
 	backupSize := opts.Size
-	baseSize := opts.Size / opts.StripedBuckets
-	lastSize := baseSize + (opts.Size % opts.StripedBuckets)
-	opts.Size = baseSize
+	opts.Size = (opts.Size / opts.StripedBuckets) + (opts.Size % opts.StripedBuckets)
+
 	for i := 0; i < opts.StripedBuckets; i++ {
-		if i == opts.StripedBuckets-1 {
-			opts.Size = lastSize
-		}
 		buckets = append(buckets, NewLRU(opts).(*LRU))
 	}
 
