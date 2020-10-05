@@ -6,9 +6,10 @@ package cache
 import (
 	"fmt"
 	"hash/maphash"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -115,49 +116,128 @@ func BenchmarkXXHashSum64(b *testing.B) {
 	}
 }
 
-func BenchmarkLRUStriped_Concurrent(b *testing.B) {
-	warmup := NewLRU(&LRUOptions{Size: 128, Name: "warmup"})
-	striped := NewLRUStriped(&LRUOptions{Size: 128, Name: "lru-striped"})
-	lru := NewLRU(&LRUOptions{Size: 128, Name: "lru"})
+func BenchmarkLRU_Concurrent(b *testing.B) {
+	type benchCase struct {
+		Name          string
+		Size          int
+		WriteRoutines int
+		MakeLRU       func(options *LRUOptions) Cache
+		Buckets       int
+	}
 
-	benchCases := []Cache{warmup, striped, lru}
+	benchCases := []benchCase{
+		{
+			Name:          "warmup-striped",
+			Size:          128 * runtime.NumCPU(),
+			WriteRoutines: runtime.NumCPU(), // flood cpu for warmup
+			MakeLRU:       NewLRUStriped,
+		},
+		{
+			Name:          "lru",
+			Size:          128 * (b.N + 1),
+			WriteRoutines: runtime.NumCPU() - 1,
+			MakeLRU:       NewLRU,
+		},
+		{
+			Name:          "lru",
+			Size:          10000,
+			WriteRoutines: runtime.NumCPU() - 1,
+			MakeLRU:       NewLRU,
+		},
+		{
+			Name:          "lru-noht",
+			Size:          10000,
+			WriteRoutines: (runtime.NumCPU() / 2) - 1,
+			MakeLRU:       NewLRU,
+		},
+		{
+			Name:          "lru",
+			Size:          10000,
+			WriteRoutines: 1,
+			MakeLRU:       NewLRU,
+		},
+		{
+			Name:          "striped",
+			Size:          128 * (b.N + 1),
+			WriteRoutines: runtime.NumCPU() - 1,
+			MakeLRU:       NewLRUStriped,
+		},
+		{
+			Name:          "striped",
+			Size:          10000,
+			WriteRoutines: runtime.NumCPU() - 1,
+			MakeLRU:       NewLRUStriped,
+		},
+		{
+			Name:          "striped-noht",
+			Size:          10000,
+			WriteRoutines: (runtime.NumCPU() / 2) - 1,
+			MakeLRU:       NewLRUStriped,
+			Buckets:       (runtime.NumCPU() / 2) - 2,
+		},
+		{
+			Name:          "striped",
+			Size:          10000,
+			WriteRoutines: 1,
+			MakeLRU:       NewLRUStriped,
+		},
+	}
 
-	for _, cache := range benchCases {
-		b.Run(cache.Name(), func(b *testing.B) {
+	for _, benchCase := range benchCases {
+		name := fmt.Sprintf("%s__size-%d__routines-%d",
+			benchCase.Name,
+			benchCase.Size,
+			benchCase.WriteRoutines,
+		)
+		b.Run(name, func(b *testing.B) {
+			b.StopTimer()
+			b.ResetTimer()
+			cache := benchCase.MakeLRU(&LRUOptions{
+				StripedBuckets: benchCase.Buckets,
+				Size:           benchCase.Size,
+				Name:           benchCase.Name,
+			})
 			run := int32(0)
 			atomic.StoreInt32(&run, 1)
 			defer atomic.StoreInt32(&run, 0)
 
-			kv := makeLRUPredictibleTestData(b.N)
+			kv := makeLRUPredictibleTestData(benchCase.Size)
 
-			for _, cache := range []Cache{striped, lru} {
-				if err := cache.SetWithExpiry("testkey", "testvalue", time.Hour); err != nil {
-					b.Fatalf("preflight check failure: %v", err)
+			for i := 0; i < len(kv); i++ {
+				if err := cache.Set(kv[i][0], kv[i][1]); err != nil {
+					b.Fatalf("preflight cache set: %v", err)
 				}
 			}
 
-			go func() {
-				i := 0
-				for atomic.LoadInt32(&run) > 0 {
-					if i >= len(kv) {
-						i = 0
-					}
-					if err := cache.SetWithExpiry(kv[i][0], kv[i][1], time.Millisecond*100); err != nil {
+			var out string
+			if err := cache.Get(kv[len(kv)-1][0], &out); err != nil {
+				b.Fatalf("preflight cache get: %v", err)
+			}
+
+			wg := &sync.WaitGroup{}
+			set := func(start int) {
+				defer wg.Done()
+				kv := kv[:]
+				for i := start; atomic.LoadInt32(&run) > 0; i = (i + 1) % (len(kv)) {
+					if err := cache.Set(kv[i][0], kv[i][1]); err != nil {
 						panic(fmt.Sprintf("set error: %v", err)) // pass ci checks, shouldn’t fail anyway.
 					}
-					i++
-				}
-			}()
-
-			time.Sleep(time.Second)
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				var out string
-				if err := cache.Get(kv[i][0], &out); err != nil && err != ErrKeyNotFound {
-					b.Fatalf("get error: %v", err)
 				}
 			}
+
+			for i := 0; i < benchCase.WriteRoutines; i++ {
+				wg.Add(1)
+				go set(benchCase.Size / ((i + 1) * 2))
+			}
+			b.StartTimer()
+			for i := 0; i < b.N; i++ {
+				var out string
+				cache.Get(kv[i%len(kv)][0], &out)
+			}
+			b.StopTimer()
+			atomic.StoreInt32(&run, 0)
+			wg.Wait()
+			b.StartTimer()
 		})
-		time.Sleep(time.Second)
 	}
 }
