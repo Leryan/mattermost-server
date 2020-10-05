@@ -102,6 +102,7 @@ func TestLRUStuff(t *testing.T) {
 	log.Println(unsafe.Sizeof(&LRU{}))
 	log.Println(unsafe.Sizeof(wraplru{}))
 	log.Println(unsafe.Sizeof(LRUStriped{}))
+	log.Println(unsafe.Sizeof(&LRUStriped{}))
 }
 
 var sum uint64
@@ -134,7 +135,6 @@ type cacheMakeAndName struct {
 type benchCase struct {
 	Size           int
 	WriteRoutines  int
-	WritePause     time.Duration
 	AccessFraction int
 	MakeLRU        cacheMakeAndName
 	Buckets        int
@@ -155,19 +155,16 @@ func generateLRU_Concurrent_Cases(params parameters) []benchCase {
 	for _, makelru := range params.MakeLRU {
 		for _, buckets := range params.Buckets {
 			for _, af := range params.AccessFraction {
-				for _, wp := range params.WritePause {
-					for _, wr := range params.WriteRoutines {
-						for _, size := range params.Size {
-							benchCases = append(benchCases, benchCase{
-								Size:           size,
-								WriteRoutines:  wr,
-								WritePause:     wp,
-								AccessFraction: af,
-								MakeLRU:        makelru,
-								Buckets:        buckets,
-								Encoder:        NilEncoder{},
-							})
-						}
+				for _, wr := range params.WriteRoutines {
+					for _, size := range params.Size {
+						benchCases = append(benchCases, benchCase{
+							Size:           size,
+							WriteRoutines:  wr,
+							AccessFraction: af,
+							MakeLRU:        makelru,
+							Buckets:        buckets,
+							Encoder:        NilEncoder{},
+						})
 					}
 				}
 			}
@@ -204,14 +201,13 @@ func staticParams() []benchCase {
 	lru := benchCase{
 		Size:           128,
 		WriteRoutines:  1,
-		WritePause:     time.Millisecond * 5,
 		AccessFraction: 4,
 		MakeLRU:        cacheMakeAndName{Name: "lru", Make: NewLRU},
-		Buckets:        1,
+		Buckets:        2,
 		Encoder:        NilEncoder{},
 	}
 	striped := lru
-	striped.Buckets = 4
+	striped.Buckets = 2
 	striped.MakeLRU = cacheMakeAndName{Name: "str", Make: NewLRUStriped}
 	return []benchCase{lru, striped}
 }
@@ -220,11 +216,10 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 	benchCases := automaticParams()
 	benchCases = staticParams()
 	for _, benchCase := range benchCases {
-		name := fmt.Sprintf("%s_buckets-%d_af-%d_wp-%v_wr-%d_size-%d",
+		name := fmt.Sprintf("%s_buckets-%d_af-%d_wr-%d_size-%d",
 			benchCase.MakeLRU.Name,
 			benchCase.Buckets,
 			benchCase.AccessFraction,
-			benchCase.WritePause,
 			benchCase.WriteRoutines,
 			benchCase.Size,
 		)

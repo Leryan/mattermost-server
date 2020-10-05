@@ -24,21 +24,23 @@ type LRU struct {
 	size                   int
 	evictList              *list.List
 	items                  map[string]*list.Element
-	lock                   sync.RWMutex
+	lock                   paddedlock
 	defaultExpiry          time.Duration
 	invalidateClusterEvent string
 	currentGeneration      int64
 	len                    int
 	encoder                Encoder
-	_                      [8]byte
+	_                      [80]byte
 }
 
 func (L *LRU) lock_() {
-	L.lock.Lock()
+	//L.lock.Lock()
+	L.lock.lock.Lock()
 }
 
 func (L *LRU) unlock() {
-	L.lock.Unlock()
+	//L.lock.Unlock()
+	L.lock.lock.Unlock()
 }
 
 // LRUOptions contains options for initializing LRU cache
