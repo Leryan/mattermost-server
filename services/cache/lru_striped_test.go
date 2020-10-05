@@ -101,6 +101,7 @@ func TestLRUStuff(t *testing.T) {
 	log.Println(unsafe.Sizeof(LRU{}))
 	log.Println(unsafe.Sizeof(&LRU{}))
 	log.Println(unsafe.Sizeof(wraplru{}))
+	log.Println(unsafe.Sizeof(LRUStriped{}))
 }
 
 var sum uint64

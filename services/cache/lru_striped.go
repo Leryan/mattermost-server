@@ -17,9 +17,10 @@ type wraplru struct {
 }
 
 type LRUStriped struct {
-	buckets []wraplru
-	opts    *LRUOptions
-	seed    maphash.Seed
+	buckets                []wraplru
+	seed                   maphash.Seed
+	name                   string
+	invalidateClusterEvent string
 }
 
 func (L *LRUStriped) Purge() error {
@@ -30,11 +31,11 @@ func (L *LRUStriped) Purge() error {
 }
 
 func (L *LRUStriped) Set(key string, value interface{}) error {
-	return L.SetWithExpiry(key, value, 0)
+	return L.keyBucket(key).Set(key, value)
 }
 
 func (L *LRUStriped) SetWithDefaultExpiry(key string, value interface{}) error {
-	return L.SetWithExpiry(key, value, L.opts.DefaultExpiry)
+	return L.keyBucket(key).SetWithDefaultExpiry(key, value)
 }
 
 func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
@@ -90,11 +91,11 @@ func (L *LRUStriped) Len() (int, error) {
 }
 
 func (L *LRUStriped) GetInvalidateClusterEvent() string {
-	return L.opts.InvalidateClusterEvent
+	return L.invalidateClusterEvent
 }
 
 func (L *LRUStriped) Name() string {
-	return L.opts.Name
+	return L.name
 }
 
 func NewLRUStriped(opts *LRUOptions) Cache {
@@ -115,7 +116,12 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 
 	opts.Size = backupSize
 
-	return &LRUStriped{buckets: buckets, opts: opts, seed: maphash.MakeSeed()}
+	return &LRUStriped{
+		buckets:                buckets,
+		seed:                   maphash.MakeSeed(),
+		invalidateClusterEvent: opts.InvalidateClusterEvent,
+		name:                   opts.Name,
+	}
 }
 
 func NewDefaultLRU(opts *LRUOptions) Cache {
