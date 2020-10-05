@@ -7,6 +7,8 @@ import (
 	"hash/maphash"
 	"runtime"
 	"time"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 type LRUStriped struct {
@@ -31,12 +33,15 @@ func (L *LRUStriped) SetWithDefaultExpiry(key string, value interface{}) error {
 }
 
 func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
-	h := &maphash.Hash{}
-	h.SetSeed(L.seed)
-	if _, err := h.WriteString(key); err != nil {
-		panic(err)
-	}
-	return h.Sum64()
+	/*
+		h := &maphash.Hash{}
+		h.SetSeed(L.seed)
+		if _, err := h.WriteString(key); err != nil {
+			panic(err)
+		}
+		return h.Sum64()
+	*/
+	return xxhash.Sum64String(key)
 }
 
 func (L *LRUStriped) keyBucket(key string) *LRU {
