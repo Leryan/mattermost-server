@@ -165,7 +165,7 @@ func generateLRU_Concurrent_Cases(params parameters) []benchCase {
 	return benchCases
 }
 
-func BenchmarkLRU_Concurrent(b *testing.B) {
+func automaticParams() []benchCase {
 	paramsStriped := parameters{
 		Size:           []int{512, 10000},
 		WriteRoutines:  []int{1, runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
@@ -186,6 +186,33 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 	benchCases := generateLRU_Concurrent_Cases(paramsLRU)
 	benchCases = append(benchCases, generateLRU_Concurrent_Cases(paramsStriped)...)
 
+	return benchCases
+}
+
+func staticParams() []benchCase {
+	return []benchCase{
+		{
+			Size:           128,
+			WriteRoutines:  2,
+			WritePause:     time.Millisecond * 5,
+			AccessFraction: 1,
+			MakeLRU:        cacheMakeAndName{Name: "lru", Make: NewLRU},
+			Buckets:        1,
+		},
+		{
+			Size:           128,
+			WriteRoutines:  2,
+			WritePause:     time.Millisecond * 5,
+			AccessFraction: 1,
+			MakeLRU:        cacheMakeAndName{Name: "str", Make: NewLRUStriped},
+			Buckets:        4,
+		},
+	}
+}
+
+func BenchmarkLRU_Concurrent(b *testing.B) {
+	benchCases := automaticParams()
+	benchCases = staticParams()
 	for _, benchCase := range benchCases {
 		name := fmt.Sprintf("%s_buckets-%d_af-%d_wp-%v_wr-%d_size-%d",
 			benchCase.MakeLRU.Name,
