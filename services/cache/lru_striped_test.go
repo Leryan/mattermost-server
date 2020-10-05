@@ -198,6 +198,7 @@ func automaticParams() []benchCase {
 }
 
 func staticParams() []benchCase {
+	cases := make([]benchCase, 0)
 	lru := benchCase{
 		Size:           128,
 		WriteRoutines:  1,
@@ -206,10 +207,26 @@ func staticParams() []benchCase {
 		Buckets:        2,
 		Encoder:        NilEncoder{},
 	}
-	striped := lru
-	striped.Buckets = 2
-	striped.MakeLRU = cacheMakeAndName{Name: "str", Make: NewLRUStriped}
-	return []benchCase{lru, striped}
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		cases = append(cases, lru)
+		lru.WriteRoutines++
+	}
+
+	lru.WriteRoutines = 1
+	lru.Buckets = 1
+	lru.MakeLRU = cacheMakeAndName{Name: "str", Make: NewLRUStriped}
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		for j := 0; j < runtime.NumCPU(); j++ {
+			cases = append(cases, lru)
+			lru.Buckets++
+		}
+		lru.WriteRoutines++
+		lru.Buckets = 1
+	}
+
+	return cases
 }
 
 func BenchmarkLRU_Concurrent(b *testing.B) {
