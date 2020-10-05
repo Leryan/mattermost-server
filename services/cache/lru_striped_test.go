@@ -118,46 +118,36 @@ func BenchmarkXXHashSum64(b *testing.B) {
 
 var out string
 
-func BenchmarkLRU_Concurrent(b *testing.B) {
-	type cacheMakeAndName struct {
-		Name string
-		Make func(options *LRUOptions) Cache
-	}
-	type benchCase struct {
-		Size           int
-		WriteRoutines  int
-		WritePause     time.Duration
-		AccessFraction int
-		MakeLRU        cacheMakeAndName
-		Buckets        int
-	}
+type cacheMakeAndName struct {
+	Name string
+	Make func(options *LRUOptions) Cache
+}
+type benchCase struct {
+	Size           int
+	WriteRoutines  int
+	WritePause     time.Duration
+	AccessFraction int
+	MakeLRU        cacheMakeAndName
+	Buckets        int
+}
 
-	type matrix struct {
-		Size           []int
-		WriteRoutines  []int
-		WritePause     []time.Duration
-		AccessFraction []int
-		MakeLRU        []cacheMakeAndName
-		Buckets        []int
-	}
+type parameters struct {
+	Size           []int
+	WriteRoutines  []int
+	WritePause     []time.Duration
+	AccessFraction []int
+	MakeLRU        []cacheMakeAndName
+	Buckets        []int
+}
 
-	parameters := matrix{
-		Size:           []int{512, 10000},
-		WriteRoutines:  []int{1, runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
-		WritePause:     []time.Duration{time.Millisecond * 10},
-		AccessFraction: []int{1, 16, 128}, // read all data, read 32 elements, read 4 elements
-		MakeLRU:        []cacheMakeAndName{{Name: "lru", Make: NewLRU}, {Name: "striped", Make: NewLRUStriped}},
-		Buckets:        []int{1, runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
-	}
-
+func generateLRU_Concurrent_Cases(params parameters) []benchCase {
 	benchCases := make([]benchCase, 0)
-
-	for _, makelru := range parameters.MakeLRU {
-		for _, buckets := range parameters.Buckets {
-			for _, af := range parameters.AccessFraction {
-				for _, wp := range parameters.WritePause {
-					for _, wr := range parameters.WriteRoutines {
-						for _, size := range parameters.Size {
+	for _, makelru := range params.MakeLRU {
+		for _, buckets := range params.Buckets {
+			for _, af := range params.AccessFraction {
+				for _, wp := range params.WritePause {
+					for _, wr := range params.WriteRoutines {
+						for _, size := range params.Size {
 							benchCases = append(benchCases, benchCase{
 								Size:           size,
 								WriteRoutines:  wr,
@@ -172,6 +162,29 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 			}
 		}
 	}
+	return benchCases
+}
+
+func BenchmarkLRU_Concurrent(b *testing.B) {
+	paramsStriped := parameters{
+		Size:           []int{512, 10000},
+		WriteRoutines:  []int{1, runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
+		WritePause:     []time.Duration{0, time.Millisecond * 10},
+		AccessFraction: []int{1, 16}, // read all data, read 32 elements
+		MakeLRU:        []cacheMakeAndName{{Name: "striped", Make: NewLRUStriped}},
+		Buckets:        []int{runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
+	}
+	paramsLRU := parameters{
+		Size:           []int{512, 10000},
+		WriteRoutines:  []int{1, runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
+		WritePause:     []time.Duration{0, time.Millisecond * 10},
+		AccessFraction: []int{1, 16}, // read all data, read 32 elements
+		MakeLRU:        []cacheMakeAndName{{Name: "lru", Make: NewLRU}},
+		Buckets:        []int{1},
+	}
+
+	benchCases := generateLRU_Concurrent_Cases(paramsLRU)
+	benchCases = append(benchCases, generateLRU_Concurrent_Cases(paramsStriped)...)
 
 	for _, benchCase := range benchCases {
 		name := fmt.Sprintf("%s_buckets-%d_af-%d_wp-%v_wr-%d_size-%d",
