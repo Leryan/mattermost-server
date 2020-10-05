@@ -8,7 +8,6 @@ import (
 	"hash/maphash"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -197,9 +196,7 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 				Size:           benchCase.Size,
 				Name:           benchCase.Name,
 			})
-			run := int32(0)
-			atomic.StoreInt32(&run, 1)
-			defer atomic.StoreInt32(&run, 0)
+			stops := make([]chan bool, benchCase.WriteRoutines)
 
 			kv := makeLRUPredictibleTestData(benchCase.Size)
 
@@ -215,10 +212,15 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 			}
 
 			wg := &sync.WaitGroup{}
-			set := func(start int) {
+			set := func(stop <-chan bool, start int) {
 				defer wg.Done()
 				kv := kv[:]
-				for i := start; atomic.LoadInt32(&run) > 0; i = (i + 1) % (len(kv)) {
+				for i := start; true; i = (i + 1) % (len(kv)) {
+					select {
+					case <-stop:
+						return
+					default:
+					}
 					if err := cache.Set(kv[i][0], kv[i][1]); err != nil {
 						panic(fmt.Sprintf("set error: %v", err)) // pass ci checks, shouldn’t fail anyway.
 					}
@@ -226,8 +228,9 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 			}
 
 			for i := 0; i < benchCase.WriteRoutines; i++ {
+				stops[i] = make(chan bool)
 				wg.Add(1)
-				go set(benchCase.Size / ((i + 1) * 2))
+				go set(stops[i], benchCase.Size/((i+1)*2))
 			}
 			b.StartTimer()
 			for i := 0; i < b.N; i++ {
@@ -235,7 +238,9 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 				cache.Get(kv[i%len(kv)][0], &out)
 			}
 			b.StopTimer()
-			atomic.StoreInt32(&run, 0)
+			for i := 0; i < benchCase.WriteRoutines; i++ {
+				stops[i] <- true
+			}
 			wg.Wait()
 			b.StartTimer()
 		})
