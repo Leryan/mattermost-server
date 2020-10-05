@@ -196,13 +196,13 @@ func staticParams() []benchCase {
 		Size:           128,
 		WriteRoutines:  2,
 		WritePause:     time.Millisecond * 5,
-		AccessFraction: 1,
+		AccessFraction: 4,
 		MakeLRU:        cacheMakeAndName{Name: "lru", Make: NewLRU},
 		Buckets:        1,
 		Encoder:        NilEncoder{},
 	}
 	striped := lru
-	striped.Buckets = 2
+	striped.Buckets = 4
 	striped.MakeLRU = cacheMakeAndName{Name: "str", Make: NewLRUStriped}
 	return []benchCase{lru, striped}
 }
