@@ -30,7 +30,7 @@ type cachePad struct {
 }
 
 type padding struct {
-	_ [64]byte
+	_ [64]byte // intel core i7 cache line size is 64 bytes
 }
 
 func BenchmarkCacheTESTNoPad(b *testing.B) {
