@@ -9,7 +9,24 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-func Encode(value interface{}) ([]byte, error) {
+type Encoder interface {
+	Encode(value interface{}) ([]byte, error)
+	Decode(entry *entry, value interface{}) error
+}
+
+type NilEncoder struct{}
+
+func (e NilEncoder) Encode(value interface{}) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (e NilEncoder) Decode(entry *entry, value interface{}) error {
+	return nil
+}
+
+type DefaultEncoder struct{}
+
+func (e DefaultEncoder) Encode(value interface{}) ([]byte, error) {
 	// We use a fast path for hot structs.
 	if msgpVal, ok := value.(msgp.Marshaler); ok {
 		return msgpVal.MarshalMsg(nil)
@@ -19,10 +36,10 @@ func Encode(value interface{}) ([]byte, error) {
 	}
 }
 
-func Decode(e *entry, value interface{}) error {
+func (e DefaultEncoder) Decode(entry *entry, value interface{}) error {
 	// We use a fast path for hot structs.
 	if msgpVal, ok := value.(msgp.Unmarshaler); ok {
-		_, err := msgpVal.UnmarshalMsg(e.value)
+		_, err := msgpVal.UnmarshalMsg(entry.value)
 		return err
 	}
 
@@ -37,16 +54,16 @@ func Decode(e *entry, value interface{}) error {
 	switch v := value.(type) {
 	case **model.User:
 		var u model.User
-		_, err := u.UnmarshalMsg(e.value)
+		_, err := u.UnmarshalMsg(entry.value)
 		*v = &u
 		return err
 	case **model.Session:
 		var s model.Session
-		_, err := s.UnmarshalMsg(e.value)
+		_, err := s.UnmarshalMsg(entry.value)
 		*v = &s
 		return err
 	}
 
 	// Slow path for other structs.
-	return msgpack.Unmarshal(e.value, value)
+	return msgpack.Unmarshal(entry.value, value)
 }

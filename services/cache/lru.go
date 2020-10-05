@@ -20,6 +20,7 @@ type LRU struct {
 	invalidateClusterEvent string
 	currentGeneration      int64
 	len                    int
+	encoder                Encoder
 }
 
 // LRUOptions contains options for initializing LRU cache
@@ -29,6 +30,7 @@ type LRUOptions struct {
 	DefaultExpiry          time.Duration
 	InvalidateClusterEvent string
 	StripedBuckets         int
+	Encoder                Encoder
 }
 
 // entry is used to hold a value in the evictList.
@@ -41,6 +43,9 @@ type entry struct {
 
 // NewLRU creates an LRU of the given size.
 func NewLRU(opts *LRUOptions) Cache {
+	if opts.Encoder == nil {
+		opts.Encoder = DefaultEncoder{}
+	}
 	return &LRU{
 		name:                   opts.Name,
 		size:                   opts.Size,
@@ -48,6 +53,7 @@ func NewLRU(opts *LRUOptions) Cache {
 		items:                  make(map[string]*list.Element, opts.Size),
 		defaultExpiry:          opts.DefaultExpiry,
 		invalidateClusterEvent: opts.InvalidateClusterEvent,
+		encoder:                opts.Encoder,
 	}
 }
 
@@ -141,7 +147,7 @@ func (l *LRU) set(key string, value interface{}, ttl time.Duration) error {
 	}
 
 	// We use a fast path for hot structs.
-	buf, err := Encode(value)
+	buf, err := l.encoder.Encode(value)
 	if err != nil {
 		return err
 	}
@@ -182,7 +188,7 @@ func (l *LRU) get(key string, value interface{}) error {
 
 		l.evictList.MoveToFront(ent)
 
-		return Decode(e, value)
+		return l.encoder.Decode(e, value)
 	}
 	return ErrKeyNotFound
 }
