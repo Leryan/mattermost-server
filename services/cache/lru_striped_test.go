@@ -6,10 +6,12 @@ package cache
 import (
 	"fmt"
 	"hash/maphash"
+	"log"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/google/uuid"
 
@@ -44,9 +46,9 @@ func makeLRURandomTestData(num int) [][2]string {
 func TestNewLRUStriped(t *testing.T) {
 	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 3, Size: 20}).(*LRUStriped)
 	require.Len(t, cache.buckets, 3)
-	assert.Equal(t, 8, cache.buckets[0].size)
-	assert.Equal(t, 8, cache.buckets[1].size)
-	assert.Equal(t, 8, cache.buckets[2].size)
+	assert.Equal(t, 8, cache.buckets[0].lru.size)
+	assert.Equal(t, 8, cache.buckets[1].lru.size)
+	assert.Equal(t, 8, cache.buckets[2].lru.size)
 }
 
 func TestLRUStriped_DistributionPredictible(t *testing.T) {
@@ -57,10 +59,10 @@ func TestLRUStriped_DistributionPredictible(t *testing.T) {
 	}
 
 	require.Len(t, cache.buckets, 4)
-	assert.GreaterOrEqual(t, cache.buckets[0].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[1].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[2].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[3].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[0].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[1].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[2].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[3].lru.len, 2300)
 }
 
 func TestLRUStriped_DistributionRandom(t *testing.T) {
@@ -71,10 +73,10 @@ func TestLRUStriped_DistributionRandom(t *testing.T) {
 	}
 
 	require.Len(t, cache.buckets, 4)
-	assert.GreaterOrEqual(t, cache.buckets[0].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[1].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[2].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[3].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[0].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[1].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[2].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[3].lru.len, 2300)
 }
 
 func TestLRUStriped_HashKey(t *testing.T) {
@@ -93,6 +95,14 @@ func TestLRUStriped_Get(t *testing.T) {
 	require.NoError(t, cache.Set("key", "value"))
 	require.NoError(t, cache.Get("key", &out))
 	require.Equal(t, "value", out)
+}
+
+func TestLRUStuff(t *testing.T) {
+	log.Println(unsafe.Sizeof(LRU{}))
+	log.Println(unsafe.Sizeof(&LRU{}))
+	log.Println(unsafe.Sizeof(wraplru{}))
+	log.Println(unsafe.Sizeof(LRUStriped{}))
+	log.Println(unsafe.Sizeof(&LRUStriped{}))
 }
 
 var sum uint64
@@ -125,10 +135,10 @@ type cacheMakeAndName struct {
 type benchCase struct {
 	Size           int
 	WriteRoutines  int
-	WritePause     time.Duration
 	AccessFraction int
 	MakeLRU        cacheMakeAndName
 	Buckets        int
+	Encoder        Encoder
 }
 
 type parameters struct {
@@ -145,18 +155,16 @@ func generateLRU_Concurrent_Cases(params parameters) []benchCase {
 	for _, makelru := range params.MakeLRU {
 		for _, buckets := range params.Buckets {
 			for _, af := range params.AccessFraction {
-				for _, wp := range params.WritePause {
-					for _, wr := range params.WriteRoutines {
-						for _, size := range params.Size {
-							benchCases = append(benchCases, benchCase{
-								Size:           size,
-								WriteRoutines:  wr,
-								WritePause:     wp,
-								AccessFraction: af,
-								MakeLRU:        makelru,
-								Buckets:        buckets,
-							})
-						}
+				for _, wr := range params.WriteRoutines {
+					for _, size := range params.Size {
+						benchCases = append(benchCases, benchCase{
+							Size:           size,
+							WriteRoutines:  wr,
+							AccessFraction: af,
+							MakeLRU:        makelru,
+							Buckets:        buckets,
+							Encoder:        NilEncoder{},
+						})
 					}
 				}
 			}
@@ -165,7 +173,7 @@ func generateLRU_Concurrent_Cases(params parameters) []benchCase {
 	return benchCases
 }
 
-func BenchmarkLRU_Concurrent(b *testing.B) {
+func automaticParams() []benchCase {
 	paramsStriped := parameters{
 		Size:           []int{512, 10000},
 		WriteRoutines:  []int{1, runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
@@ -186,12 +194,49 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 	benchCases := generateLRU_Concurrent_Cases(paramsLRU)
 	benchCases = append(benchCases, generateLRU_Concurrent_Cases(paramsStriped)...)
 
+	return benchCases
+}
+
+func staticParams() []benchCase {
+	cases := make([]benchCase, 0)
+	lru := benchCase{
+		Size:           128,
+		WriteRoutines:  1,
+		AccessFraction: 4,
+		MakeLRU:        cacheMakeAndName{Name: "lru", Make: NewLRU},
+		Buckets:        2,
+		Encoder:        NilEncoder{},
+	}
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		cases = append(cases, lru)
+		lru.WriteRoutines++
+	}
+
+	lru.WriteRoutines = 1
+	lru.Buckets = 1
+	lru.MakeLRU = cacheMakeAndName{Name: "str", Make: NewLRUStriped}
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		for j := 0; j < runtime.NumCPU(); j++ {
+			cases = append(cases, lru)
+			lru.Buckets++
+		}
+		lru.WriteRoutines++
+		lru.Buckets = 1
+	}
+
+	return cases
+}
+
+func BenchmarkLRU_Concurrent(b *testing.B) {
+	benchCases := automaticParams()
+	benchCases = staticParams()
 	for _, benchCase := range benchCases {
-		name := fmt.Sprintf("%s_buckets-%d_af-%d_wp-%v_wr-%d_size-%d",
+		name := fmt.Sprintf("%s_buckets-%d_af-%d_wr-%d_size-%d",
 			benchCase.MakeLRU.Name,
 			benchCase.Buckets,
 			benchCase.AccessFraction,
-			benchCase.WritePause,
 			benchCase.WriteRoutines,
 			benchCase.Size,
 		)
@@ -202,54 +247,44 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 				StripedBuckets: benchCase.Buckets,
 				Size:           benchCase.Size,
 				Name:           benchCase.MakeLRU.Name,
+				Encoder:        benchCase.Encoder,
 			})
-			stops := make([]chan bool, benchCase.WriteRoutines)
 
-			kv := makeLRUPredictibleTestData(benchCase.Size)
-
-			for i := 0; i < len(kv); i++ {
-				if err := cache.Set(kv[i][0], kv[i][1]); err != nil {
+			for i := 0; i < benchCase.Size; i++ {
+				if err := cache.Set(fmt.Sprintf("%d-key-%d", i, i), "ignored"); err != nil {
 					b.Fatalf("preflight cache set: %v", err)
 				}
 			}
 
-			if err := cache.Get(kv[len(kv)-1][0], &out); err != nil {
+			if err := cache.Get(fmt.Sprintf("%d-key-%d", benchCase.Size-1, benchCase.Size-1), &out); err != nil {
 				b.Fatalf("preflight cache get: %v", err)
 			}
 
 			wg := &sync.WaitGroup{}
-			set := func(stop <-chan bool, start int) {
+			set := func(start int) {
 				defer wg.Done()
-				kvc := make([][2]string, len(kv))
-				copy(kvc, kv)
-				pause := benchCase.WritePause
-				for i := start; true; i = (i + 1) % (len(kvc)) {
-					select {
-					case <-stop:
-						return
-					default:
-					}
-					if err := cache.Set(kvc[i][0], kvc[i][1]); err != nil {
+				for i := start; i < b.N; i++ {
+					k := i % benchCase.Size
+					if err := cache.Set(fmt.Sprintf("%d-key-%d", k, k), "ignored"); err != nil {
 						panic(fmt.Sprintf("set error: %v", err)) // pass ci checks, shouldn’t fail anyway.
 					}
-					time.Sleep(pause)
 				}
 			}
 
 			for i := 0; i < benchCase.WriteRoutines; i++ {
-				stops[i] = make(chan bool)
 				wg.Add(1)
-				go set(stops[i], benchCase.Size/((i+1)*2))
+				go set(benchCase.Size / ((i + 1) * 2))
+			}
+			max := benchCase.Size / benchCase.AccessFraction
+			keys := make([]string, max)
+			for i := 0; i < len(keys); i++ {
+				keys[i] = fmt.Sprintf("%d-key-%d", i, i)
 			}
 			b.StartTimer()
-			max := len(kv) / benchCase.AccessFraction
 			for i := 0; i < b.N; i++ {
-				cache.Get(kv[i%max][0], &out)
+				cache.Get(keys[i%max], &out)
 			}
 			b.StopTimer()
-			for i := 0; i < benchCase.WriteRoutines; i++ {
-				stops[i] <- true
-			}
 			wg.Wait()
 		})
 	}

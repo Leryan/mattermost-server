@@ -7,40 +7,51 @@ import (
 	"hash/maphash"
 	"runtime"
 	"time"
+
+	"github.com/cespare/xxhash/v2"
 )
 
+type wraplru struct {
+	lru *LRU
+	_   padding
+}
+
 type LRUStriped struct {
-	buckets []*LRU
-	opts    *LRUOptions
-	seed    maphash.Seed
+	buckets                []wraplru
+	seed                   maphash.Seed
+	name                   string
+	invalidateClusterEvent string
 }
 
 func (L *LRUStriped) Purge() error {
 	for _, bucket := range L.buckets {
-		bucket.Purge() // errors from purging LRU can be ignored as they always return nil
+		bucket.lru.Purge() // errors from purging LRU can be ignored as they always return nil
 	}
 	return nil
 }
 
 func (L *LRUStriped) Set(key string, value interface{}) error {
-	return L.SetWithExpiry(key, value, 0)
+	return L.keyBucket(key).Set(key, value)
 }
 
 func (L *LRUStriped) SetWithDefaultExpiry(key string, value interface{}) error {
-	return L.SetWithExpiry(key, value, L.opts.DefaultExpiry)
+	return L.keyBucket(key).SetWithDefaultExpiry(key, value)
 }
 
 func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
-	h := &maphash.Hash{}
-	h.SetSeed(L.seed)
-	if _, err := h.WriteString(key); err != nil {
-		panic(err)
-	}
-	return h.Sum64()
+	/*
+		h := &maphash.Hash{}
+		h.SetSeed(L.seed)
+		if _, err := h.WriteString(key); err != nil {
+			panic(err)
+		}
+		return h.Sum64()
+	*/
+	return xxhash.Sum64String(key)
 }
 
 func (L *LRUStriped) keyBucket(key string) *LRU {
-	return L.buckets[L.hashkeyMapHash(key)%uint64(len(L.buckets))]
+	return L.buckets[L.hashkeyMapHash(key)%uint64(len(L.buckets))].lru
 }
 
 func (L *LRUStriped) SetWithExpiry(key string, value interface{}, ttl time.Duration) error {
@@ -58,7 +69,7 @@ func (L *LRUStriped) Remove(key string) error {
 func (L *LRUStriped) Keys() ([]string, error) {
 	keys := make([]string, 0)
 	for _, bucket := range L.buckets {
-		k, err := bucket.Keys()
+		k, err := bucket.lru.Keys()
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +81,7 @@ func (L *LRUStriped) Keys() ([]string, error) {
 func (L *LRUStriped) Len() (int, error) {
 	size := 0
 	for _, bucket := range L.buckets {
-		s, err := bucket.Len()
+		s, err := bucket.lru.Len()
 		if err != nil {
 			return 0, err
 		}
@@ -80,11 +91,11 @@ func (L *LRUStriped) Len() (int, error) {
 }
 
 func (L *LRUStriped) GetInvalidateClusterEvent() string {
-	return L.opts.InvalidateClusterEvent
+	return L.invalidateClusterEvent
 }
 
 func (L *LRUStriped) Name() string {
-	return L.opts.Name
+	return L.name
 }
 
 func NewLRUStriped(opts *LRUOptions) Cache {
@@ -95,17 +106,22 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 		opts.StripedBuckets = opts.Size
 	}
 
-	buckets := make([]*LRU, 0, opts.StripedBuckets)
+	buckets := make([]wraplru, 0, opts.StripedBuckets)
 	backupSize := opts.Size
 	opts.Size = (opts.Size / opts.StripedBuckets) + (opts.Size % opts.StripedBuckets)
 
 	for i := 0; i < opts.StripedBuckets; i++ {
-		buckets = append(buckets, NewLRU(opts).(*LRU))
+		buckets = append(buckets, wraplru{lru: NewLRU(opts).(*LRU)})
 	}
 
 	opts.Size = backupSize
 
-	return &LRUStriped{buckets: buckets, opts: opts, seed: maphash.MakeSeed()}
+	return &LRUStriped{
+		buckets:                buckets,
+		seed:                   maphash.MakeSeed(),
+		invalidateClusterEvent: opts.InvalidateClusterEvent,
+		name:                   opts.Name,
+	}
 }
 
 func NewDefaultLRU(opts *LRUOptions) Cache {
