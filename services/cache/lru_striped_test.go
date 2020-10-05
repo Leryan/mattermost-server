@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -115,86 +116,79 @@ func BenchmarkXXHashSum64(b *testing.B) {
 	}
 }
 
+var out string
+
 func BenchmarkLRU_Concurrent(b *testing.B) {
+	type cacheMakeAndName struct {
+		Name string
+		Make func(options *LRUOptions) Cache
+	}
 	type benchCase struct {
-		Name          string
-		Size          int
-		WriteRoutines int
-		MakeLRU       func(options *LRUOptions) Cache
-		Buckets       int
+		Size           int
+		WriteRoutines  int
+		WritePause     time.Duration
+		AccessFraction int
+		MakeLRU        cacheMakeAndName
+		Buckets        int
 	}
 
-	benchCases := []benchCase{
-		{
-			Name:          "warmup-striped",
-			Size:          128 * runtime.NumCPU(),
-			WriteRoutines: runtime.NumCPU(), // flood cpu for warmup
-			MakeLRU:       NewLRUStriped,
-		},
-		{
-			Name:          "lru",
-			Size:          128 * (b.N + 1),
-			WriteRoutines: runtime.NumCPU() - 1,
-			MakeLRU:       NewLRU,
-		},
-		{
-			Name:          "lru",
-			Size:          10000,
-			WriteRoutines: runtime.NumCPU() - 1,
-			MakeLRU:       NewLRU,
-		},
-		{
-			Name:          "lru-noht",
-			Size:          10000,
-			WriteRoutines: (runtime.NumCPU() / 2) - 1,
-			MakeLRU:       NewLRU,
-		},
-		{
-			Name:          "lru",
-			Size:          10000,
-			WriteRoutines: 1,
-			MakeLRU:       NewLRU,
-		},
-		{
-			Name:          "striped",
-			Size:          128 * (b.N + 1),
-			WriteRoutines: runtime.NumCPU() - 1,
-			MakeLRU:       NewLRUStriped,
-		},
-		{
-			Name:          "striped",
-			Size:          10000,
-			WriteRoutines: runtime.NumCPU() - 1,
-			MakeLRU:       NewLRUStriped,
-		},
-		{
-			Name:          "striped-noht",
-			Size:          10000,
-			WriteRoutines: (runtime.NumCPU() / 2) - 1,
-			MakeLRU:       NewLRUStriped,
-			Buckets:       (runtime.NumCPU() / 2) - 2,
-		},
-		{
-			Name:          "striped",
-			Size:          10000,
-			WriteRoutines: 1,
-			MakeLRU:       NewLRUStriped,
-		},
+	type matrix struct {
+		Size           []int
+		WriteRoutines  []int
+		WritePause     []time.Duration
+		AccessFraction []int
+		MakeLRU        []cacheMakeAndName
+		Buckets        []int
+	}
+
+	parameters := matrix{
+		Size:           []int{512, 10000},
+		WriteRoutines:  []int{1, runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
+		WritePause:     []time.Duration{time.Millisecond * 10},
+		AccessFraction: []int{1, 16, 128}, // read all data, read 32 elements, read 4 elements
+		MakeLRU:        []cacheMakeAndName{{Name: "lru", Make: NewLRU}, {Name: "striped", Make: NewLRUStriped}},
+		Buckets:        []int{1, runtime.NumCPU() / 2, runtime.NumCPU() - 1, runtime.NumCPU()},
+	}
+
+	benchCases := make([]benchCase, 0)
+
+	for _, makelru := range parameters.MakeLRU {
+		for _, buckets := range parameters.Buckets {
+			for _, af := range parameters.AccessFraction {
+				for _, wp := range parameters.WritePause {
+					for _, wr := range parameters.WriteRoutines {
+						for _, size := range parameters.Size {
+							benchCases = append(benchCases, benchCase{
+								Size:           size,
+								WriteRoutines:  wr,
+								WritePause:     wp,
+								AccessFraction: af,
+								MakeLRU:        makelru,
+								Buckets:        buckets,
+							})
+						}
+					}
+				}
+			}
+		}
 	}
 
 	for _, benchCase := range benchCases {
-		name := fmt.Sprintf("%s__size-%d__routines-%d",
-			benchCase.Name,
-			benchCase.Size,
+		name := fmt.Sprintf("%s_buckets-%d_af-%d_wp-%v_wr-%d_size-%d",
+			benchCase.MakeLRU.Name,
+			benchCase.Buckets,
+			benchCase.AccessFraction,
+			benchCase.WritePause,
 			benchCase.WriteRoutines,
+			benchCase.Size,
 		)
 		b.Run(name, func(b *testing.B) {
 			b.StopTimer()
 			b.ResetTimer()
-			cache := benchCase.MakeLRU(&LRUOptions{
+			cache := benchCase.MakeLRU.Make(&LRUOptions{
 				StripedBuckets: benchCase.Buckets,
 				Size:           benchCase.Size,
-				Name:           benchCase.Name,
+				Name:           benchCase.MakeLRU.Name,
 			})
 			stops := make([]chan bool, benchCase.WriteRoutines)
 
@@ -206,7 +200,6 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 				}
 			}
 
-			var out string
 			if err := cache.Get(kv[len(kv)-1][0], &out); err != nil {
 				b.Fatalf("preflight cache get: %v", err)
 			}
@@ -214,16 +207,19 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 			wg := &sync.WaitGroup{}
 			set := func(stop <-chan bool, start int) {
 				defer wg.Done()
-				kv := kv[:]
-				for i := start; true; i = (i + 1) % (len(kv)) {
+				kvc := make([][2]string, len(kv))
+				copy(kvc, kv)
+				pause := benchCase.WritePause
+				for i := start; true; i = (i + 1) % (len(kvc)) {
 					select {
 					case <-stop:
 						return
 					default:
 					}
-					if err := cache.Set(kv[i][0], kv[i][1]); err != nil {
+					if err := cache.Set(kvc[i][0], kvc[i][1]); err != nil {
 						panic(fmt.Sprintf("set error: %v", err)) // pass ci checks, shouldn’t fail anyway.
 					}
+					time.Sleep(pause)
 				}
 			}
 
@@ -233,16 +229,15 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 				go set(stops[i], benchCase.Size/((i+1)*2))
 			}
 			b.StartTimer()
+			max := len(kv) / benchCase.AccessFraction
 			for i := 0; i < b.N; i++ {
-				var out string
-				cache.Get(kv[i%len(kv)][0], &out)
+				cache.Get(kv[i%max][0], &out)
 			}
 			b.StopTimer()
 			for i := 0; i < benchCase.WriteRoutines; i++ {
 				stops[i] <- true
 			}
 			wg.Wait()
-			b.StartTimer()
 		})
 	}
 }
