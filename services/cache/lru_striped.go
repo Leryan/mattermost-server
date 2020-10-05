@@ -11,15 +11,20 @@ import (
 	"github.com/cespare/xxhash/v2"
 )
 
+type wraplru struct {
+	lru *LRU
+	_   padding
+}
+
 type LRUStriped struct {
-	buckets []*LRU
+	buckets []wraplru
 	opts    *LRUOptions
 	seed    maphash.Seed
 }
 
 func (L *LRUStriped) Purge() error {
 	for _, bucket := range L.buckets {
-		bucket.Purge() // errors from purging LRU can be ignored as they always return nil
+		bucket.lru.Purge() // errors from purging LRU can be ignored as they always return nil
 	}
 	return nil
 }
@@ -45,7 +50,7 @@ func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
 }
 
 func (L *LRUStriped) keyBucket(key string) *LRU {
-	return L.buckets[L.hashkeyMapHash(key)%uint64(len(L.buckets))]
+	return L.buckets[L.hashkeyMapHash(key)%uint64(len(L.buckets))].lru
 }
 
 func (L *LRUStriped) SetWithExpiry(key string, value interface{}, ttl time.Duration) error {
@@ -63,7 +68,7 @@ func (L *LRUStriped) Remove(key string) error {
 func (L *LRUStriped) Keys() ([]string, error) {
 	keys := make([]string, 0)
 	for _, bucket := range L.buckets {
-		k, err := bucket.Keys()
+		k, err := bucket.lru.Keys()
 		if err != nil {
 			return nil, err
 		}
@@ -75,7 +80,7 @@ func (L *LRUStriped) Keys() ([]string, error) {
 func (L *LRUStriped) Len() (int, error) {
 	size := 0
 	for _, bucket := range L.buckets {
-		s, err := bucket.Len()
+		s, err := bucket.lru.Len()
 		if err != nil {
 			return 0, err
 		}
@@ -100,12 +105,12 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 		opts.StripedBuckets = opts.Size
 	}
 
-	buckets := make([]*LRU, 0, opts.StripedBuckets)
+	buckets := make([]wraplru, 0, opts.StripedBuckets)
 	backupSize := opts.Size
 	opts.Size = (opts.Size / opts.StripedBuckets) + (opts.Size % opts.StripedBuckets)
 
 	for i := 0; i < opts.StripedBuckets; i++ {
-		buckets = append(buckets, NewLRU(opts).(*LRU))
+		buckets = append(buckets, wraplru{lru: NewLRU(opts).(*LRU)})
 	}
 
 	opts.Size = backupSize

@@ -6,10 +6,12 @@ package cache
 import (
 	"fmt"
 	"hash/maphash"
+	"log"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/google/uuid"
 
@@ -44,9 +46,9 @@ func makeLRURandomTestData(num int) [][2]string {
 func TestNewLRUStriped(t *testing.T) {
 	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 3, Size: 20}).(*LRUStriped)
 	require.Len(t, cache.buckets, 3)
-	assert.Equal(t, 8, cache.buckets[0].size)
-	assert.Equal(t, 8, cache.buckets[1].size)
-	assert.Equal(t, 8, cache.buckets[2].size)
+	assert.Equal(t, 8, cache.buckets[0].lru.size)
+	assert.Equal(t, 8, cache.buckets[1].lru.size)
+	assert.Equal(t, 8, cache.buckets[2].lru.size)
 }
 
 func TestLRUStriped_DistributionPredictible(t *testing.T) {
@@ -57,10 +59,10 @@ func TestLRUStriped_DistributionPredictible(t *testing.T) {
 	}
 
 	require.Len(t, cache.buckets, 4)
-	assert.GreaterOrEqual(t, cache.buckets[0].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[1].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[2].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[3].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[0].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[1].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[2].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[3].lru.len, 2300)
 }
 
 func TestLRUStriped_DistributionRandom(t *testing.T) {
@@ -71,10 +73,10 @@ func TestLRUStriped_DistributionRandom(t *testing.T) {
 	}
 
 	require.Len(t, cache.buckets, 4)
-	assert.GreaterOrEqual(t, cache.buckets[0].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[1].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[2].len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[3].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[0].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[1].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[2].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[3].lru.len, 2300)
 }
 
 func TestLRUStriped_HashKey(t *testing.T) {
@@ -93,6 +95,12 @@ func TestLRUStriped_Get(t *testing.T) {
 	require.NoError(t, cache.Set("key", "value"))
 	require.NoError(t, cache.Get("key", &out))
 	require.Equal(t, "value", out)
+}
+
+func TestLRUStuff(t *testing.T) {
+	log.Println(unsafe.Sizeof(LRU{}))
+	log.Println(unsafe.Sizeof(&LRU{}))
+	log.Println(unsafe.Sizeof(wraplru{}))
 }
 
 var sum uint64
@@ -194,7 +202,7 @@ func automaticParams() []benchCase {
 func staticParams() []benchCase {
 	lru := benchCase{
 		Size:           128,
-		WriteRoutines:  2,
+		WriteRoutines:  1,
 		WritePause:     time.Millisecond * 5,
 		AccessFraction: 4,
 		MakeLRU:        cacheMakeAndName{Name: "lru", Make: NewLRU},
@@ -228,7 +236,6 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 				Name:           benchCase.MakeLRU.Name,
 				Encoder:        benchCase.Encoder,
 			})
-			stops := make([]chan bool, benchCase.WriteRoutines)
 
 			for i := 0; i < benchCase.Size; i++ {
 				if err := cache.Set(fmt.Sprintf("%d-key-%d", i, i), "ignored"); err != nil {
@@ -241,26 +248,19 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 			}
 
 			wg := &sync.WaitGroup{}
-			set := func(stop <-chan bool, start int) {
+			set := func(start int) {
 				defer wg.Done()
-				pause := benchCase.WritePause
-				for i := start; true; i = (i + 1) % benchCase.Size {
-					select {
-					case <-stop:
-						return
-					default:
-					}
-					if err := cache.Set(fmt.Sprintf("%d-key-%d", i, i), "ignored"); err != nil {
+				for i := start; i < b.N; i++ {
+					k := i % benchCase.Size
+					if err := cache.Set(fmt.Sprintf("%d-key-%d", k, k), "ignored"); err != nil {
 						panic(fmt.Sprintf("set error: %v", err)) // pass ci checks, shouldn’t fail anyway.
 					}
-					time.Sleep(pause)
 				}
 			}
 
 			for i := 0; i < benchCase.WriteRoutines; i++ {
-				stops[i] = make(chan bool)
 				wg.Add(1)
-				go set(stops[i], benchCase.Size/((i+1)*2))
+				go set(benchCase.Size / ((i + 1) * 2))
 			}
 			max := benchCase.Size / benchCase.AccessFraction
 			keys := make([]string, max)
@@ -272,9 +272,6 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 				cache.Get(keys[i%max], &out)
 			}
 			b.StopTimer()
-			for i := 0; i < benchCase.WriteRoutines; i++ {
-				stops[i] <- true
-			}
 			wg.Wait()
 		})
 	}
