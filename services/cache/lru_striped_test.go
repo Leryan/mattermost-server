@@ -240,7 +240,7 @@ func kvm4vCPUParams() []benchCase {
 			Make: NewLRU,
 		},
 		Buckets: 1,
-		Encoder: NilEncoder{},
+		Encoder: DefaultEncoder{},
 	})
 
 	cases = append(cases, benchCase{
@@ -252,7 +252,7 @@ func kvm4vCPUParams() []benchCase {
 			Make: NewLRUStriped,
 		},
 		Buckets: 3,
-		Encoder: NilEncoder{},
+		Encoder: DefaultEncoder{},
 	})
 
 	return cases
