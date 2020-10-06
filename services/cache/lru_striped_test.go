@@ -291,12 +291,18 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 				b.Fatalf("preflight cache get: %v", err)
 			}
 
+			max := benchCase.Size / benchCase.AccessFraction
+			keys := make([]string, benchCase.Size)
+			for i := 0; i < len(keys); i++ {
+				keys[i] = fmt.Sprintf("%d-key-%d", i, i)
+			}
+
 			wg := &sync.WaitGroup{}
 			set := func(start int) {
 				defer wg.Done()
 				for i := start; i < b.N; i++ {
 					k := i % benchCase.Size
-					if err := cache.Set(fmt.Sprintf("%d-key-%d", k, k), "ignored"); err != nil {
+					if err := cache.Set(keys[k], "ignored"); err != nil {
 						panic(fmt.Sprintf("set error: %v", err)) // pass ci checks, shouldn’t fail anyway.
 					}
 				}
@@ -304,13 +310,9 @@ func BenchmarkLRU_Concurrent(b *testing.B) {
 
 			for i := 0; i < benchCase.WriteRoutines; i++ {
 				wg.Add(1)
-				go set(benchCase.Size / ((i + 1) * 2))
+				go set(i)
 			}
-			max := benchCase.Size / benchCase.AccessFraction
-			keys := make([]string, max)
-			for i := 0; i < len(keys); i++ {
-				keys[i] = fmt.Sprintf("%d-key-%d", i, i)
-			}
+
 			b.StartTimer()
 			for i := 0; i < b.N; i++ {
 				cache.Get(keys[i%max], &out)
