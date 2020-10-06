@@ -37,8 +37,10 @@ func main() {
 
 	var cache cache2.Cache
 	if *cacheType == "lru" {
+		fmt.Println("Using LRU cache")
 		cache = lru(opts)
 	} else {
+		fmt.Println("Using Striped LRU cache")
 		cache = striped(opts)
 	}
 
