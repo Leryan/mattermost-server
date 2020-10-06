@@ -204,7 +204,7 @@ func staticParams() []benchCase {
 		WriteRoutines:  1,
 		AccessFraction: 4,
 		MakeLRU:        cacheMakeAndName{Name: "lru", Make: NewLRU},
-		Buckets:        2,
+		Buckets:        1,
 		Encoder:        NilEncoder{},
 	}
 
@@ -229,9 +229,40 @@ func staticParams() []benchCase {
 	return cases
 }
 
+func kvm4vCPUParams() []benchCase {
+	cases := make([]benchCase, 0)
+	cases = append(cases, benchCase{
+		Size:           128,
+		WriteRoutines:  3,
+		AccessFraction: 4,
+		MakeLRU: cacheMakeAndName{
+			Name: "lru",
+			Make: NewLRU,
+		},
+		Buckets: 1,
+		Encoder: NilEncoder{},
+	})
+
+	cases = append(cases, benchCase{
+		Size:           128,
+		WriteRoutines:  3,
+		AccessFraction: 4,
+		MakeLRU: cacheMakeAndName{
+			Name: "str",
+			Make: NewLRUStriped,
+		},
+		Buckets: 3,
+		Encoder: NilEncoder{},
+	})
+
+	return cases
+}
+
 func BenchmarkLRU_Concurrent(b *testing.B) {
 	benchCases := automaticParams()
 	benchCases = staticParams()
+	benchCases = kvm4vCPUParams()
+
 	for _, benchCase := range benchCases {
 		name := fmt.Sprintf("%s_buckets-%d_af-%d_wr-%d_size-%d",
 			benchCase.MakeLRU.Name,
