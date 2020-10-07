@@ -43,6 +43,14 @@ func (L *LRU) unlock() {
 	L.lock.lock.Unlock()
 }
 
+func (L *LRU) rlock() {
+	L.lock.lock.RLock()
+}
+
+func (L *LRU) runlock() {
+	L.lock.lock.RUnlock()
+}
+
 // LRUOptions contains options for initializing LRU cache
 type LRUOptions struct {
 	Name                   string
@@ -128,8 +136,8 @@ func (l *LRU) Remove(key string) error {
 
 // Keys returns a slice of the keys in the cache.
 func (l *LRU) Keys() ([]string, error) {
-	l.lock_()
-	defer l.unlock()
+	l.rlock()
+	defer l.runlock()
 
 	keys := make([]string, l.len)
 	i := 0
@@ -145,8 +153,8 @@ func (l *LRU) Keys() ([]string, error) {
 
 // Len returns the number of items in the cache.
 func (l *LRU) Len() (int, error) {
-	l.lock_()
-	defer l.unlock()
+	l.rlock()
+	defer l.runlock()
 	return l.len, nil
 }
 
