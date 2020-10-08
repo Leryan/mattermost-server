@@ -18,6 +18,22 @@ type paddedlock struct {
 	_    padding
 }
 
+func (l *paddedlock) Lock() {
+	l.lock.Lock()
+}
+
+func (l *paddedlock) Unlock() {
+	l.lock.Unlock()
+}
+
+func (l *paddedlock) RLock() {
+	l.lock.RLock()
+}
+
+func (l *paddedlock) RUnlock() {
+	l.lock.RUnlock()
+}
+
 // LRU is a thread-safe fixed size LRU cache.
 type LRU struct {
 	name                   string
@@ -31,24 +47,6 @@ type LRU struct {
 	len                    int
 	encoder                Encoder
 	_                      [80]byte
-}
-
-func (L *LRU) lock_() {
-	//L.lock.Lock()
-	L.lock.lock.Lock()
-}
-
-func (L *LRU) unlock() {
-	//L.lock.Unlock()
-	L.lock.lock.Unlock()
-}
-
-func (L *LRU) rlock() {
-	L.lock.lock.RLock()
-}
-
-func (L *LRU) runlock() {
-	L.lock.lock.RUnlock()
 }
 
 // LRUOptions contains options for initializing LRU cache
@@ -87,8 +85,8 @@ func NewLRU(opts *LRUOptions) Cache {
 
 // Purge is used to completely clear the cache.
 func (l *LRU) Purge() error {
-	l.lock_()
-	defer l.unlock()
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
 	l.len = 0
 	l.currentGeneration++
@@ -110,23 +108,23 @@ func (l *LRU) SetWithDefaultExpiry(key string, value interface{}) error {
 // SetWithExpiry adds the given key and value to the cache with the given expiry. If the key
 // already exists, it will overwrite the previoous value
 func (l *LRU) SetWithExpiry(key string, value interface{}, ttl time.Duration) error {
-	l.lock_()
-	defer l.unlock()
+	l.lock.Lock()
+	defer l.lock.Unlock()
 	return l.set(key, value, ttl)
 }
 
 // Get the content stored in the cache for the given key, and decode it into the value interface.
 // return ErrKeyNotFound if the key is missing from the cache
 func (l *LRU) Get(key string, value interface{}) error {
-	l.lock_()
-	defer l.unlock()
+	l.lock.Lock()
+	defer l.lock.Unlock()
 	return l.get(key, value)
 }
 
 // Remove deletes the value for a key.
 func (l *LRU) Remove(key string) error {
-	l.lock_()
-	defer l.unlock()
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
 	if ent, ok := l.items[key]; ok {
 		l.removeElement(ent)
@@ -136,8 +134,8 @@ func (l *LRU) Remove(key string) error {
 
 // Keys returns a slice of the keys in the cache.
 func (l *LRU) Keys() ([]string, error) {
-	l.rlock()
-	defer l.runlock()
+	l.lock.RLock()
+	defer l.lock.RUnlock()
 
 	keys := make([]string, l.len)
 	i := 0
@@ -153,8 +151,8 @@ func (l *LRU) Keys() ([]string, error) {
 
 // Len returns the number of items in the cache.
 func (l *LRU) Len() (int, error) {
-	l.rlock()
-	defer l.runlock()
+	l.lock.RLock()
+	defer l.lock.RUnlock()
 	return l.len, nil
 }
 
