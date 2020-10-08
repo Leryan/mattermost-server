@@ -46,9 +46,9 @@ func makeLRURandomTestData(num int) [][2]string {
 func TestNewLRUStriped(t *testing.T) {
 	cache := NewLRUStriped(&LRUOptions{StripedBuckets: 3, Size: 20}).(*LRUStriped)
 	require.Len(t, cache.buckets, 3)
-	assert.Equal(t, 8, cache.buckets[0].lru.size)
-	assert.Equal(t, 8, cache.buckets[1].lru.size)
-	assert.Equal(t, 8, cache.buckets[2].lru.size)
+	assert.Equal(t, 8, cache.buckets[0].size)
+	assert.Equal(t, 8, cache.buckets[1].size)
+	assert.Equal(t, 8, cache.buckets[2].size)
 }
 
 func TestLRUStriped_DistributionPredictible(t *testing.T) {
@@ -59,10 +59,10 @@ func TestLRUStriped_DistributionPredictible(t *testing.T) {
 	}
 
 	require.Len(t, cache.buckets, 4)
-	assert.GreaterOrEqual(t, cache.buckets[0].lru.len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[1].lru.len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[2].lru.len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[3].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[0].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[1].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[2].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[3].len, 2300)
 }
 
 func TestLRUStriped_DistributionRandom(t *testing.T) {
@@ -73,10 +73,10 @@ func TestLRUStriped_DistributionRandom(t *testing.T) {
 	}
 
 	require.Len(t, cache.buckets, 4)
-	assert.GreaterOrEqual(t, cache.buckets[0].lru.len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[1].lru.len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[2].lru.len, 2300)
-	assert.GreaterOrEqual(t, cache.buckets[3].lru.len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[0].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[1].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[2].len, 2300)
+	assert.GreaterOrEqual(t, cache.buckets[3].len, 2300)
 }
 
 func TestLRUStriped_HashKey(t *testing.T) {
@@ -98,11 +98,9 @@ func TestLRUStriped_Get(t *testing.T) {
 }
 
 func TestLRUStuff(t *testing.T) {
-	log.Println(unsafe.Sizeof(LRU{}))
-	log.Println(unsafe.Sizeof(&LRU{}))
-	log.Println(unsafe.Sizeof(wraplru{}))
-	log.Println(unsafe.Sizeof(LRUStriped{}))
-	log.Println(unsafe.Sizeof(&LRUStriped{}))
+	log.Println("lru: ", unsafe.Sizeof(LRU{}))
+	log.Println("sync rwmutex: ", unsafe.Sizeof(sync.RWMutex{}))
+	log.Println("padded rwmutex: ", unsafe.Sizeof(paddedlock{}))
 }
 
 var sum uint64

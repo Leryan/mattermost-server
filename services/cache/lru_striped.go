@@ -11,34 +11,36 @@ import (
 	"github.com/cespare/xxhash/v2"
 )
 
-type wraplru struct {
-	lru *LRU
-	_   padding
+func newLRU(lock *paddedlock, opts *LRUOptions) *LRU {
+	c := NewLRU(opts).(*LRU)
+	c.lock = lock
+	return c
 }
 
 type LRUStriped struct {
-	buckets                []wraplru
+	locks                  []paddedlock
+	buckets                []*LRU
 	seed                   maphash.Seed
 	name                   string
 	invalidateClusterEvent string
 }
 
-func (L *LRUStriped) Purge() error {
-	for _, bucket := range L.buckets {
-		bucket.lru.Purge() // errors from purging LRU can be ignored as they always return nil
+func (L LRUStriped) Purge() error {
+	for _, lru := range L.buckets {
+		lru.Purge() // errors from purging LRU can be ignored as they always return nil
 	}
 	return nil
 }
 
-func (L *LRUStriped) Set(key string, value interface{}) error {
+func (L LRUStriped) Set(key string, value interface{}) error {
 	return L.keyBucket(key).Set(key, value)
 }
 
-func (L *LRUStriped) SetWithDefaultExpiry(key string, value interface{}) error {
+func (L LRUStriped) SetWithDefaultExpiry(key string, value interface{}) error {
 	return L.keyBucket(key).SetWithDefaultExpiry(key, value)
 }
 
-func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
+func (L LRUStriped) hashkeyMapHash(key string) uint64 {
 	/*
 		h := &maphash.Hash{}
 		h.SetSeed(L.seed)
@@ -50,26 +52,26 @@ func (L *LRUStriped) hashkeyMapHash(key string) uint64 {
 	return xxhash.Sum64String(key)
 }
 
-func (L *LRUStriped) keyBucket(key string) *LRU {
-	return L.buckets[L.hashkeyMapHash(key)%uint64(len(L.buckets))].lru
+func (L LRUStriped) keyBucket(key string) *LRU {
+	return L.buckets[L.hashkeyMapHash(key)%uint64(len(L.buckets))]
 }
 
-func (L *LRUStriped) SetWithExpiry(key string, value interface{}, ttl time.Duration) error {
+func (L LRUStriped) SetWithExpiry(key string, value interface{}, ttl time.Duration) error {
 	return L.keyBucket(key).SetWithExpiry(key, value, ttl)
 }
 
-func (L *LRUStriped) Get(key string, value interface{}) error {
+func (L LRUStriped) Get(key string, value interface{}) error {
 	return L.keyBucket(key).Get(key, value)
 }
 
-func (L *LRUStriped) Remove(key string) error {
+func (L LRUStriped) Remove(key string) error {
 	return L.keyBucket(key).Remove(key)
 }
 
-func (L *LRUStriped) Keys() ([]string, error) {
+func (L LRUStriped) Keys() ([]string, error) {
 	keys := make([]string, 0)
-	for _, bucket := range L.buckets {
-		k, err := bucket.lru.Keys()
+	for _, lru := range L.buckets {
+		k, err := lru.Keys()
 		if err != nil {
 			return nil, err
 		}
@@ -78,10 +80,10 @@ func (L *LRUStriped) Keys() ([]string, error) {
 	return keys, nil
 }
 
-func (L *LRUStriped) Len() (int, error) {
+func (L LRUStriped) Len() (int, error) {
 	size := 0
-	for _, bucket := range L.buckets {
-		s, err := bucket.lru.Len()
+	for _, lru := range L.buckets {
+		s, err := lru.Len()
 		if err != nil {
 			return 0, err
 		}
@@ -90,11 +92,11 @@ func (L *LRUStriped) Len() (int, error) {
 	return size, nil
 }
 
-func (L *LRUStriped) GetInvalidateClusterEvent() string {
+func (L LRUStriped) GetInvalidateClusterEvent() string {
 	return L.invalidateClusterEvent
 }
 
-func (L *LRUStriped) Name() string {
+func (L LRUStriped) Name() string {
 	return L.name
 }
 
@@ -106,12 +108,13 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 		opts.StripedBuckets = opts.Size
 	}
 
-	buckets := make([]wraplru, 0, opts.StripedBuckets)
+	buckets := make([]*LRU, 0, opts.StripedBuckets)
 	backupSize := opts.Size
 	opts.Size = (opts.Size / opts.StripedBuckets) + (opts.Size % opts.StripedBuckets)
 
+	locks := make([]paddedlock, opts.StripedBuckets)
 	for i := 0; i < opts.StripedBuckets; i++ {
-		buckets = append(buckets, wraplru{lru: NewLRU(opts).(*LRU)})
+		buckets = append(buckets, newLRU(&locks[i], opts))
 	}
 
 	opts.Size = backupSize
@@ -121,6 +124,7 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 		seed:                   maphash.MakeSeed(),
 		invalidateClusterEvent: opts.InvalidateClusterEvent,
 		name:                   opts.Name,
+		locks:                  locks,
 	}
 }
 

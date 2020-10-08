@@ -9,13 +9,9 @@ import (
 	"time"
 )
 
-type padding struct {
-	_ [64 - 8]byte
-}
-
 type paddedlock struct {
 	lock sync.RWMutex
-	_    padding
+	_    [64 - 24]byte
 }
 
 func (l *paddedlock) Lock() {
@@ -40,13 +36,13 @@ type LRU struct {
 	size                   int
 	evictList              *list.List
 	items                  map[string]*list.Element
-	lock                   paddedlock
+	lock                   *paddedlock
 	defaultExpiry          time.Duration
 	invalidateClusterEvent string
 	currentGeneration      int64
 	len                    int
 	encoder                Encoder
-	_                      [80]byte
+	_                      [128 - 104]byte
 }
 
 // LRUOptions contains options for initializing LRU cache
@@ -80,6 +76,7 @@ func NewLRU(opts *LRUOptions) Cache {
 		defaultExpiry:          opts.DefaultExpiry,
 		invalidateClusterEvent: opts.InvalidateClusterEvent,
 		encoder:                opts.Encoder,
+		lock:                   &paddedlock{},
 	}
 }
 
