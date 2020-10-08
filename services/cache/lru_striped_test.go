@@ -6,7 +6,6 @@ package cache
 import (
 	"fmt"
 	"hash/maphash"
-	"log"
 	"runtime"
 	"sync"
 	"testing"
@@ -97,13 +96,10 @@ func TestLRUStriped_Get(t *testing.T) {
 	require.Equal(t, "value", out)
 }
 
-func TestLRUStuff(t *testing.T) {
-	log.Println("lru: ", unsafe.Sizeof(LRU{}))
-	log.Println("sync rwmutex: ", unsafe.Sizeof(sync.RWMutex{}))
-	log.Println("padded rwmutex: ", unsafe.Sizeof(paddedlock{}))
+func TestLRUPadding(t *testing.T) {
+	assert.Equal(t, uintptr(128), unsafe.Sizeof(LRU{}))
+	assert.Equal(t, uintptr(64), unsafe.Sizeof(paddedRWMutex{}))
 }
-
-var sum uint64
 
 func BenchmarkMaphashSum64(b *testing.B) {
 	seed := maphash.MakeSeed()
@@ -114,13 +110,13 @@ func BenchmarkMaphashSum64(b *testing.B) {
 		if _, err := h.WriteString(fmt.Sprint("superduperkey")); err != nil {
 			panic(err)
 		}
-		sum = h.Sum64()
+		h.Sum64()
 	}
 }
 
 func BenchmarkXXHashSum64(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		sum = xxhash.Sum64String("superduperkey")
+		xxhash.Sum64String("superduperkey")
 	}
 }
 

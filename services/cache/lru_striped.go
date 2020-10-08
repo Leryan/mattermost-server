@@ -11,14 +11,8 @@ import (
 	"github.com/cespare/xxhash/v2"
 )
 
-func newLRU(lock *paddedlock, opts *LRUOptions) *LRU {
-	c := NewLRU(opts).(*LRU)
-	c.lock = lock
-	return c
-}
-
 type LRUStriped struct {
-	locks                  []paddedlock
+	locks                  []paddedRWMutex
 	buckets                []*LRU
 	seed                   maphash.Seed
 	name                   string
@@ -112,9 +106,11 @@ func NewLRUStriped(opts *LRUOptions) Cache {
 	backupSize := opts.Size
 	opts.Size = (opts.Size / opts.StripedBuckets) + (opts.Size % opts.StripedBuckets)
 
-	locks := make([]paddedlock, opts.StripedBuckets)
+	locks := make([]paddedRWMutex, opts.StripedBuckets)
 	for i := 0; i < opts.StripedBuckets; i++ {
-		buckets = append(buckets, newLRU(&locks[i], opts))
+		bucket := NewLRU(opts).(*LRU)
+		bucket.lock = &locks[i] // not sure we need this, waiting tests on linux
+		buckets = append(buckets, bucket)
 	}
 
 	opts.Size = backupSize

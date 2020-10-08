@@ -9,24 +9,24 @@ import (
 	"time"
 )
 
-type paddedlock struct {
-	lock sync.RWMutex
-	//_    [64 - 24]byte
+type paddedRWMutex struct {
+	lock sync.RWMutex  // 24 bytes as reported by unsafe.Sizeof(sync.RWMutex{})
+	_    [64 - 24]byte // 64 bytes is the size of most modern processors.
 }
 
-func (l *paddedlock) Lock() {
+func (l *paddedRWMutex) Lock() {
 	l.lock.Lock()
 }
 
-func (l *paddedlock) Unlock() {
+func (l *paddedRWMutex) Unlock() {
 	l.lock.Unlock()
 }
 
-func (l *paddedlock) RLock() {
+func (l *paddedRWMutex) RLock() {
 	l.lock.RLock()
 }
 
-func (l *paddedlock) RUnlock() {
+func (l *paddedRWMutex) RUnlock() {
 	l.lock.RUnlock()
 }
 
@@ -36,13 +36,13 @@ type LRU struct {
 	size                   int
 	evictList              *list.List
 	items                  map[string]*list.Element
-	lock                   *paddedlock
+	lock                   *paddedRWMutex
 	defaultExpiry          time.Duration
 	invalidateClusterEvent string
 	currentGeneration      int64
 	len                    int
 	encoder                Encoder
-	//_                      [128 - 104]byte
+	_                      [128 - 104]byte
 }
 
 // LRUOptions contains options for initializing LRU cache
@@ -76,7 +76,7 @@ func NewLRU(opts *LRUOptions) Cache {
 		defaultExpiry:          opts.DefaultExpiry,
 		invalidateClusterEvent: opts.InvalidateClusterEvent,
 		encoder:                opts.Encoder,
-		lock:                   &paddedlock{},
+		lock:                   &paddedRWMutex{},
 	}
 }
 
