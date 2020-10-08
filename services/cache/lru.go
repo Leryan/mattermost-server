@@ -11,7 +11,7 @@ import (
 
 type paddedlock struct {
 	lock sync.RWMutex
-	_    [64 - 24]byte
+	//_    [64 - 24]byte
 }
 
 func (l *paddedlock) Lock() {
@@ -42,7 +42,7 @@ type LRU struct {
 	currentGeneration      int64
 	len                    int
 	encoder                Encoder
-	_                      [128 - 104]byte
+	//_                      [128 - 104]byte
 }
 
 // LRUOptions contains options for initializing LRU cache
